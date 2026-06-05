@@ -2,10 +2,43 @@ import Foundation
 import CoreGraphics
 import IOKit
 
+// MARK: - CoreDisplay Private API (loaded at runtime via dlsym)
+
+private let _CoreDisplay_CreateConfig: (@convention(c) (CGDirectDisplayID) -> UnsafeMutableRawPointer?)? = {
+    guard let handle = dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY | RTLD_NOLOAD) ?? dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY) else { return nil }
+    guard let sym = dlsym(handle, "CoreDisplay_Display_CreateDisplayConfig") else { return nil }
+    return unsafeBitCast(sym, to: (@convention(c) (CGDirectDisplayID) -> UnsafeMutableRawPointer?).self)
+}()
+
+private let _CoreDisplay_AddScaledResolution: (@convention(c) (UnsafeMutableRawPointer, UInt32, UInt32) -> Void)? = {
+    guard let handle = dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY | RTLD_NOLOAD) ?? dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY) else { return nil }
+    guard let sym = dlsym(handle, "CoreDisplay_Display_AddScaledResolution") else { return nil }
+    return unsafeBitCast(sym, to: (@convention(c) (UnsafeMutableRawPointer, UInt32, UInt32) -> Void).self)
+}()
+
+private let _CoreDisplay_ApplyConfig: (@convention(c) (UnsafeMutableRawPointer) -> Bool)? = {
+    guard let handle = dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY | RTLD_NOLOAD) ?? dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY) else { return nil }
+    guard let sym = dlsym(handle, "CoreDisplay_Display_ApplyDisplayConfig") else { return nil }
+    return unsafeBitCast(sym, to: (@convention(c) (UnsafeMutableRawPointer) -> Bool).self)
+}()
+
+/// Whether the experimental CoreDisplay runtime HiDPI API is available on this system.
+private var isExperimentalHiDPIAvailable: Bool {
+    _CoreDisplay_CreateConfig != nil &&
+    _CoreDisplay_AddScaledResolution != nil &&
+    _CoreDisplay_ApplyConfig != nil
+}
+
 @MainActor
 final class HiDPIService: @unchecked Sendable {
     static let shared = HiDPIService()
-    private init() {}
+    private init() {
+        if isExperimentalHiDPIAvailable {
+            print("[HiDPIService] Experimental CoreDisplay HiDPI API is available")
+        } else {
+            print("[HiDPIService] CoreDisplay HiDPI API not available, will use plist override")
+        }
+    }
 
     private var refreshTask: Task<Void, Never>?
 
@@ -13,19 +46,34 @@ final class HiDPIService: @unchecked Sendable {
 
     // MARK: - Public API
 
-    /// Checks whether HiDPI is enabled for the given display via plist override.
-    func isHiDPIEnabled(for displayID: CGDirectDisplayID, vendor: UInt32, product: UInt32) -> Bool {
-        FileManager.default.fileExists(atPath: overridePlistURL(vendor: vendor, product: product).path)
+    /// Whether the experimental CoreDisplay-based HiDPI method is available on this system.
+    var isCoreDisplayApiAvailable: Bool { isExperimentalHiDPIAvailable }
+
+    /// Whether the experimental method is both available and opted-in via settings.
+    var shouldUseRuntimeMethod: Bool {
+        SettingsService.shared.useExperimentalHiDPI && isExperimentalHiDPIAvailable
     }
 
-    /// Checks whether HiDPI is enabled for the given display via plist override only.
+    /// Checks whether HiDPI modes are currently registered for this display.
+    /// For plist method: checks if override plist exists.
+    /// For runtime method: checks if we've previously registered modes.
+    func isHiDPIEnabled(for displayID: CGDirectDisplayID, vendor: UInt32, product: UInt32) -> Bool {
+        // Check runtime state first if experimental mode is active
+        if shouldUseRuntimeMethod {
+            return runtimeEnabledDisplays.contains(displayID)
+        }
+        return FileManager.default.fileExists(atPath: overridePlistURL(vendor: vendor, product: product).path)
+    }
+
+    /// Convenience overload (vendor/product only).
     func isHiDPIEnabled(vendor: UInt32, product: UInt32) -> Bool {
         let plistURL = overridePlistURL(vendor: vendor, product: product)
         return FileManager.default.fileExists(atPath: plistURL.path)
     }
 
-    /// Enables HiDPI for an external display via plist override.
-    /// Requires display reconnect (or reboot) to apply.
+    /// Enables HiDPI for an external display.
+    /// Uses the experimental CoreDisplay runtime API when opted-in and available,
+    /// otherwise falls back to the plist override approach (requires admin password).
     ///
     /// Returns nil on success, or an error string on failure.
     func enableHiDPI(for displayID: CGDirectDisplayID,
@@ -33,24 +81,38 @@ final class HiDPIService: @unchecked Sendable {
                      product: UInt32,
                      nativeWidth: Int,
                      nativeHeight: Int) async -> String? {
+        if shouldUseRuntimeMethod {
+            let result = enableHiDPIRuntime(displayID: displayID, nativeWidth: nativeWidth, nativeHeight: nativeHeight)
+            if result == nil {
+                print("[HiDPIService] Runtime HiDPI enable succeeded for display \(displayID)")
+                return nil
+            } else {
+                print("[HiDPIService] Runtime HiDPI enable failed: \(result!), falling back to plist")
+                // Fall through to plist override
+            }
+        }
         return enableHiDPIPlist(vendor: vendor, product: product,
                                 nativeWidth: nativeWidth, nativeHeight: nativeHeight)
     }
 
-    /// Legacy single-path enable (plist only).
+    /// Legacy single-path enable (plist only, ignores experimental setting).
     func enableHiDPI(vendor: UInt32, product: UInt32, nativeWidth: Int, nativeHeight: Int) -> String? {
         enableHiDPIPlist(vendor: vendor, product: product,
                          nativeWidth: nativeWidth, nativeHeight: nativeHeight)
     }
 
-    /// Disables HiDPI for an external display by removing the plist override.
+    /// Disables HiDPI for an external display.
     func disableHiDPI(for displayID: CGDirectDisplayID,
                       vendor: UInt32,
                       product: UInt32) -> String? {
+        if shouldUseRuntimeMethod {
+            disableHiDPIRuntime(displayID: displayID)
+            // Always clean up plist too — may have been left from a previous session
+        }
         return disableHiDPIPlist(vendor: vendor, product: product)
     }
 
-    /// Legacy single-path disable (plist only).
+    /// Legacy single-path disable (plist only, ignores experimental setting).
     func disableHiDPI(vendor: UInt32, product: UInt32) -> String? {
         disableHiDPIPlist(vendor: vendor, product: product)
     }
@@ -73,14 +135,84 @@ final class HiDPIService: @unchecked Sendable {
         }
     }
 
-    // MARK: - Plist Override
+    // MARK: - Experimental Runtime Method (CoreDisplay Private API)
+
+    /// Tracks displays where runtime HiDPI modes have been registered.
+    private var runtimeEnabledDisplays: Set<CGDirectDisplayID> = []
+
+    /// Enables HiDPI at runtime using CoreDisplay private API.
+    /// No admin password needed, works immediately (no reconnect).
+    /// Returns nil on success, error string on failure.
+    private func enableHiDPIRuntime(displayID: CGDirectDisplayID,
+                                     nativeWidth: Int,
+                                     nativeHeight: Int) -> String? {
+        guard let createConfig = _CoreDisplay_CreateConfig,
+              let addScaled = _CoreDisplay_AddScaledResolution,
+              let applyConfig = _CoreDisplay_ApplyConfig else {
+            return "CoreDisplay API symbols not available"
+        }
+
+        guard let config = createConfig(displayID) else {
+            return "CoreDisplay_Display_CreateDisplayConfig returned nil"
+        }
+
+        // Generate the same scaled modes as the plist approach
+        let modes = generateScaledBackingSizes(nativeWidth: nativeWidth, nativeHeight: nativeHeight)
+
+        for (backingW, backingH) in modes {
+            addScaled(config, UInt32(backingW), UInt32(backingH))
+        }
+
+        let success = applyConfig(config)
+        // Note: CoreDisplay configs are CFTypes; release to avoid leak.
+        // We can't call CFRelease on UnsafeMutableRawPointer without bridging,
+        // but the config is consumed by ApplyDisplayConfig in practice.
+
+        if success {
+            runtimeEnabledDisplays.insert(displayID)
+            return nil
+        } else {
+            return "CoreDisplay_Display_ApplyDisplayConfig returned false"
+        }
+    }
+
+    /// Removes runtime HiDPI modes for a display.
+    private func disableHiDPIRuntime(displayID: CGDirectDisplayID) {
+        runtimeEnabledDisplays.remove(displayID)
+        // The display reverts to its default modes automatically on logout/reboot
+        // or when the last client releasing the config reference.
+        // For a more immediate effect, we could re-apply with an empty config,
+        // but most tools just leave the modes registered until display disconnect.
+    }
+
+    /// Generates backing (physical pixel) sizes for HiDPI scaled modes.
+    /// Returns pairs of (backingWidth, backingHeight).
+    private func generateScaledBackingSizes(nativeWidth: Int, nativeHeight: Int) -> [(Int, Int)] {
+        var resolutions: [(Int, Int)] = []
+
+        // Native resolution as HiDPI (2x backing)
+        resolutions.append((nativeWidth * 2, nativeHeight * 2))
+
+        // Scaled HiDPI modes
+        let scales: [Double] = [0.75, 0.625, 0.5]
+        for scale in scales {
+            let logicalW = Int((Double(nativeWidth) * scale).rounded()) & ~1
+            let logicalH = Int((Double(nativeHeight) * scale).rounded()) & ~1
+            guard logicalW >= 800, logicalH >= 600 else { continue }
+            resolutions.append((logicalW * 2, logicalH * 2))
+        }
+
+        return resolutions
+    }
+
+    // MARK: - Plist Override (Fallback)
 
     private func enableHiDPIPlist(vendor: UInt32, product: UInt32,
                                    nativeWidth: Int, nativeHeight: Int) -> String? {
         let dirPath = overrideDir(vendor: vendor).path
         let plistPath = overridePlistURL(vendor: vendor, product: product).path
 
-        let scaledModes = generateScaledModes(nativeWidth: nativeWidth, nativeHeight: nativeHeight)
+        let scaledModes = generatePlistScaledModeData(nativeWidth: nativeWidth, nativeHeight: nativeHeight)
         let plist: [String: Any] = [
             "scale-resolutions": scaledModes
         ]
@@ -89,7 +221,6 @@ final class HiDPIService: @unchecked Sendable {
             return "Failed to generate plist data"
         }
 
-        // Write to a temp file first, then use privileged helper to move it
         let tmpPath = NSTemporaryDirectory() + "fd_hidpi_override.plist"
         do {
             try data.write(to: URL(fileURLWithPath: tmpPath), options: .atomic)
@@ -97,17 +228,12 @@ final class HiDPIService: @unchecked Sendable {
             return "Failed to write temp file: \(error.localizedDescription)"
         }
 
-        // Use AppleScript to get admin privileges for writing to /Library/Displays/
         if let err = executePrivilegedCommand("mkdir -p '\(dirPath)' && cp '\(tmpPath)' '\(plistPath)'") {
             return err
         }
 
-        // Clean up temp file
         try? FileManager.default.removeItem(atPath: tmpPath)
-
-        // Attempt to trigger display mode re-enumeration via IOServiceRequestProbe
         triggerDisplayReenumeration(vendor: vendor, product: product)
-
         return nil
     }
 
@@ -123,8 +249,6 @@ final class HiDPIService: @unchecked Sendable {
 
     // MARK: - Helpers
 
-    /// Executes a shell command with administrator privileges via AppleScript.
-    /// Returns nil on success, or an error message on failure.
     private func executePrivilegedCommand(_ command: String) -> String? {
         let script = """
             do shell script "\(command)" with administrator privileges
@@ -194,27 +318,8 @@ final class HiDPIService: @unchecked Sendable {
             .appendingPathComponent(String(format: "DisplayProductID-%x", product))
     }
 
-    private func generateScaledModes(nativeWidth: Int, nativeHeight: Int) -> [Data] {
-        // Generate HiDPI modes: each entry is 8 bytes big-endian (backingW, backingH)
-        // For a 2560×1440 display, we want:
-        //   1920×1080 HiDPI (backing 3840×2160)
-        //   1600×900  HiDPI (backing 3200×1800)
-        //   1280×720  HiDPI (backing 2560×1440)
-        //   native as HiDPI (backing 5120×2880)
-        var resolutions: [(Int, Int)] = []
-
-        // Native resolution as HiDPI (2x backing)
-        resolutions.append((nativeWidth * 2, nativeHeight * 2))
-
-        // Scaled HiDPI modes
-        let scales: [Double] = [0.75, 0.625, 0.5]
-        for scale in scales {
-            let logicalW = Int((Double(nativeWidth) * scale).rounded()) & ~1
-            let logicalH = Int((Double(nativeHeight) * scale).rounded()) & ~1
-            guard logicalW >= 800, logicalH >= 600 else { continue }
-            resolutions.append((logicalW * 2, logicalH * 2))
-        }
-
+    private func generatePlistScaledModeData(nativeWidth: Int, nativeHeight: Int) -> [Data] {
+        let resolutions = generateScaledBackingSizes(nativeWidth: nativeWidth, nativeHeight: nativeHeight)
         return resolutions.map { (backingW, backingH) in
             var bytes = [UInt8](repeating: 0, count: 8)
             bytes[0] = UInt8((backingW >> 24) & 0xFF)

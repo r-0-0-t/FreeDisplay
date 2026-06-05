@@ -2,10 +2,15 @@ import SwiftUI
 
 struct HiDPIRowView: View {
     @ObservedObject var display: DisplayInfo
+    @ObservedObject private var settings = SettingsService.shared
     @State private var isHovered = false
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
     @State private var isHiDPIOn: Bool = false
+
+    private var isExperimental: Bool {
+        HiDPIService.shared.shouldUseRuntimeMethod
+    }
 
     var body: some View {
         if display.isBuiltin {
@@ -16,10 +21,21 @@ struct HiDPIRowView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("HiDPI Mode")
                         .font(.body)
-                    if !isHiDPIOn {
-                        Text("Requires admin privileges")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    HStack(spacing: 4) {
+                        if isExperimental {
+                            Text("Runtime")
+                                .font(.caption2)
+                                .foregroundColor(.teal)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.teal.opacity(0.12))
+                                .cornerRadius(3)
+                        }
+                        if !isHiDPIOn {
+                            Text(isExperimental ? "No admin prompt needed" : "Requires admin privileges")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 Spacer()
@@ -44,6 +60,14 @@ struct HiDPIRowView: View {
             .onHover { isHovered = $0 }
             .onAppear {
                 isHiDPIOn = HiDPIService.shared.isHiDPIEnabled(
+                    for: display.displayID,
+                    vendor: display.vendorNumber,
+                    product: display.modelNumber
+                )
+            }
+            .onChange(of: settings.useExperimentalHiDPI) { _, _ in
+                isHiDPIOn = HiDPIService.shared.isHiDPIEnabled(
+                    for: display.displayID,
                     vendor: display.vendorNumber,
                     product: display.modelNumber
                 )

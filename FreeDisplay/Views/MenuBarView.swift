@@ -364,6 +364,27 @@ struct SettingsView: View {
             .padding(.horizontal, 12)
             .help("Automatically check for updates each time the app launches")
 
+            // Experimental: CoreDisplay runtime HiDPI (no admin prompt)
+            if HiDPIService.shared.isCoreDisplayApiAvailable {
+                Toggle(isOn: $settings.useExperimentalHiDPI) {
+                    HStack(spacing: 6) {
+                        MenuItemIcon(systemName: "sparkles", color: .teal)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Experimental HiDPI")
+                                .font(.body)
+                            Text("No admin prompt — CoreDisplay runtime API")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .padding(.horizontal, 12)
+                .help("Use CoreDisplay private API to register HiDPI modes at runtime without requiring admin privileges")
+            }
+
             // Language switcher (i18n)
             HStack(spacing: 6) {
                 MenuItemIcon(systemName: "globe", color: .indigo)

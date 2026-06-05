@@ -32,6 +32,7 @@ final class SettingsService: ObservableObject, @unchecked Sendable {
         static let checkUpdatesOnLaunch   = "fd.checkUpdatesOnLaunch"
         static let colorPickerHistory     = "fd.colorPickerHistory"
         static let preferredLanguage      = "fd.preferredLanguage"
+        static let experimentalHiDPI      = "fd.experimentalHiDPI"
         // Per-display keys use prefix + displayID
         static let brightnessPrefix       = "fd.brightness_"
         static let contrastPrefix         = "fd.contrast_"
@@ -100,6 +101,12 @@ final class SettingsService: ObservableObject, @unchecked Sendable {
         didSet {
             defaults.set(colorPickerHistory, forKey: Keys.colorPickerHistory)
         }
+    }
+
+    /// Whether to use the experimental CoreDisplay-based HiDPI method (no admin prompt).
+    /// Falls back to plist override if CoreDisplay symbols aren't available.
+    @Published var useExperimentalHiDPI: Bool = false {
+        didSet { defaults.set(useExperimentalHiDPI, forKey: Keys.experimentalHiDPI) }
     }
 
     /// User's preferred UI language (defaults to `.system`).
@@ -173,6 +180,7 @@ final class SettingsService: ObservableObject, @unchecked Sendable {
             ? defaults.double(forKey: Keys.ddcCacheTTL) : 5.0
         checkUpdatesOnLaunch = defaults.object(forKey: Keys.checkUpdatesOnLaunch) != nil
             ? defaults.bool(forKey: Keys.checkUpdatesOnLaunch) : true
+        useExperimentalHiDPI = defaults.bool(forKey: Keys.experimentalHiDPI)
         colorPickerHistory = defaults.stringArray(forKey: Keys.colorPickerHistory) ?? []
         if let raw = defaults.string(forKey: Keys.preferredLanguage),
            let lang = PreferredLanguage(rawValue: raw) {
