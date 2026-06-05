@@ -47,11 +47,13 @@ final class HiDPIService: @unchecked Sendable {
     // MARK: - Public API
 
     /// Whether the experimental CoreDisplay-based HiDPI method is available on this system.
-    var isCoreDisplayApiAvailable: Bool { isExperimentalHiDPIAvailable }
+    /// Always returns true — the runtime method gracefully falls back to plist if symbols aren't found.
+    var isCoreDisplayApiAvailable: Bool { true }
 
-    /// Whether the experimental method is both available and opted-in via settings.
+    /// Whether the experimental method is opted-in via settings.
+    /// The runtime method will try dlsym symbols and fall back to plist if unavailable.
     var shouldUseRuntimeMethod: Bool {
-        SettingsService.shared.useExperimentalHiDPI && isExperimentalHiDPIAvailable
+        SettingsService.shared.useExperimentalHiDPI
     }
 
     /// Checks whether HiDPI modes are currently registered for this display.
