@@ -71,25 +71,38 @@ struct VirtualDisplayView: View {
                 .padding(.bottom, 8)
             }
         }
-        .alert("确认删除", isPresented: Binding(
-            get: { configToDelete != nil },
-            set: { if !$0 { configToDelete = nil } }
-        )) {
-            Button("删除", role: .destructive) {
-                if let id = configToDelete {
-                    service.removeConfig(id: id)
+        
+        // Inline Confirmation Dialog instead of .alert
+        if let id = configToDelete {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("确认删除此虚拟显示器？")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                if service.isActive(id) {
+                    Text("当前处于活跃状态，删除后将立即停用。")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
-                configToDelete = nil
+                HStack {
+                    Button("取消") {
+                        configToDelete = nil
+                    }
+                    .controlSize(.small)
+                    
+                    Button("删除") {
+                        service.removeConfig(id: id)
+                        configToDelete = nil
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                }
             }
-            Button("取消", role: .cancel) {
-                configToDelete = nil
-            }
-        } message: {
-            if let id = configToDelete, service.isActive(id) {
-                Text("此虚拟显示器当前处于活跃状态，删除后将立即停用。")
-            } else {
-                Text("确认删除此虚拟显示器配置？")
-            }
+            .padding(10)
+            .background(Color.primary.opacity(0.05))
+            .cornerRadius(6)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
     }
 
