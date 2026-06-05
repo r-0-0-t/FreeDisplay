@@ -49,7 +49,7 @@ struct DisplayModeListView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
-                Text("显示模式")
+                Text("Display Modes")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
@@ -59,14 +59,14 @@ struct DisplayModeListView: View {
                         .foregroundColor(.accentColor)
                 }
                 .buttonStyle(.plain)
-                .help("刷新模式列表")
+                .help("Refresh mode list")
             }
             .padding(.horizontal, 12)
             .padding(.top, 6)
             .padding(.bottom, 2)
 
             if resolutionGroups.isEmpty {
-                Text("没有可用的显示模式")
+                Text("No display modes available")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 12)
@@ -91,15 +91,15 @@ struct DisplayModeListView: View {
                     }) {
                         HStack(spacing: 4) {
                             // Split into two distinct Text views so each branch
-                            // is a clean LocalizedStringKey literal. The "显示全部 N 个"
+                            // is a clean LocalizedStringKey literal. The "Show all N"
                             // form needs interpolation, which only works when the
                             // string is a literal — not when wrapped via the
                             // LocalizedStringKey(String) initializer.
                             Group {
                                 if showAllModes {
-                                    Text("收起")
+                                    Text("Collapse")
                                 } else {
-                                    Text("显示全部 \(resolutionGroups.count) 个")
+                                    Text("Show all \(resolutionGroups.count)")
                                 }
                             }
                             .font(.caption)
@@ -173,7 +173,7 @@ struct DisplayModeListView: View {
                 errorMessage = nil
             } else {
                 withAnimation {
-                    errorMessage = "无法切换到 \(mode.resolutionString)，请重试"
+                    errorMessage = "Failed to switch to \(mode.resolutionString), please retry"
                 }
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -258,7 +258,7 @@ private struct ResolutionRow: View {
                 }
 
                 if isCurrent {
-                    Text("当前")
+                    Text("Current")
                         .font(.caption2)
                         .foregroundColor(.white)
                         .padding(.horizontal, 5)
@@ -323,7 +323,7 @@ private struct RefreshRatePicker: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text("刷新率")
+            Text("Refresh Rate")
                 .font(.caption2)
                 .foregroundColor(.secondary)
 

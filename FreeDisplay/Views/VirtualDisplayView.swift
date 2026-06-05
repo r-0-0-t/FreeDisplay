@@ -1,7 +1,7 @@
 import SwiftUI
 import CoreGraphics
 
-/// "虚拟显示器" management section shown in the MenuBarView tools area.
+/// "Virtual Displays" management section shown in the MenuBarView tools area.
 /// Lists all saved virtual display configurations and allows creating / deleting them.
 struct VirtualDisplayView: View {
     @StateObject private var service = VirtualDisplayService.shared
@@ -13,7 +13,7 @@ struct VirtualDisplayView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if service.configs.isEmpty {
-                Text("暂无虚拟显示器")
+                Text("No virtual displays")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 12)
@@ -31,7 +31,7 @@ struct VirtualDisplayView: View {
                 HStack {
                     Image(systemName: showCreateForm ? "minus.circle.fill" : "plus.circle.fill")
                         .foregroundColor(.accentColor)
-                    Text(LocalizedStringKey(showCreateForm ? "取消" : "创建虚拟显示器"))
+                    Text(LocalizedStringKey(showCreateForm ? "Cancel" : "Create Virtual Display"))
                         .font(.body)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -39,7 +39,7 @@ struct VirtualDisplayView: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .help("创建新的虚拟显示器")
+            .help("Create a new virtual display")
 
             if let err = createError {
                 Text(LocalizedStringKey(err))
@@ -59,7 +59,7 @@ struct VirtualDisplayView: View {
                         if success {
                             showCreateForm = false
                         } else {
-                            createError = "虚拟显示器创建失败，请重试"
+                            createError = "Failed to create virtual display, please retry"
                             Task { @MainActor in
                                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                                 createError = nil
@@ -75,21 +75,21 @@ struct VirtualDisplayView: View {
         // Inline Confirmation Dialog instead of .alert
         if let id = configToDelete {
             VStack(alignment: .leading, spacing: 6) {
-                Text("确认删除此虚拟显示器？")
+                Text("Confirm delete this virtual display?")
                     .font(.caption)
                     .fontWeight(.semibold)
                 if service.isActive(id) {
-                    Text("当前处于活跃状态，删除后将立即停用。")
+                    Text("Currently active. Deleting will deactivate it immediately.")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
                 HStack {
-                    Button("取消") {
+                    Button("Cancel") {
                         configToDelete = nil
                     }
                     .controlSize(.small)
                     
-                    Button("删除") {
+                    Button("Delete") {
                         service.removeConfig(id: id)
                         configToDelete = nil
                     }
@@ -130,7 +130,7 @@ struct VirtualDisplayView: View {
 
             // Active / inactive badge
             if active {
-                Text("活跃")
+                Text("Active")
                     .font(.caption2)
                     .foregroundColor(.white)
                     .padding(.horizontal, 5)
@@ -143,12 +143,12 @@ struct VirtualDisplayView: View {
             Button(action: {
                 configToDelete = config.id
             }) {
-                Label("删除", systemImage: "trash")
+                Label("Delete", systemImage: "trash")
                     .font(.caption)
                     .foregroundColor(.red)
             }
             .buttonStyle(.plain)
-            .help("删除此虚拟显示器")
+            .help("Delete this virtual display")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -160,7 +160,7 @@ struct VirtualDisplayView: View {
             Button(role: .destructive) {
                 configToDelete = config.id
             } label: {
-                Label("删除", systemImage: "trash")
+                Label("Delete", systemImage: "trash")
             }
         }
     }
@@ -173,7 +173,7 @@ struct CreateVirtualDisplayForm: View {
     @Binding var isCreating: Bool
     let onConfirm: (VirtualDisplayService.VirtualDisplayConfig) -> Void
 
-    @State private var name: String = "虚拟显示器"
+    @State private var name: String = "Virtual Display"
     @State private var selectedPreset: Int = 0
     @State private var hiDPI: Bool = true
     @State private var autoCreate: Bool = true
@@ -188,18 +188,18 @@ struct CreateVirtualDisplayForm: View {
         VStack(alignment: .leading, spacing: 8) {
             // Name field
             HStack {
-                Text("名称")
+                Text("Name")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(width: 44, alignment: .leading)
-                TextField("显示器名称", text: $name)
+                TextField("Display Name", text: $name)
                     .textFieldStyle(.roundedBorder)
                     .font(.caption)
             }
 
             // Resolution preset picker
             HStack {
-                Text("分辨率")
+                Text("Resolution")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(width: 44, alignment: .leading)
@@ -211,7 +211,7 @@ struct CreateVirtualDisplayForm: View {
                 .pickerStyle(.menu)
                 .font(.caption)
                 .labelsHidden()
-                .help("选择虚拟显示器分辨率")
+                .help("Select virtual display resolution")
             }
 
             // HiDPI toggle
@@ -224,15 +224,15 @@ struct CreateVirtualDisplayForm: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .controlSize(.mini)
-                    .help("启用高分辨率模式（Retina）")
-                Text("启用高分辨率缩放")
+                    .help("Enable high resolution mode (Retina)")
+                Text("Enable HiDPI Scaling")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
 
             // Auto-create toggle
             HStack {
-                Text("自动")
+                Text("Auto")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(width: 44, alignment: .leading)
@@ -240,7 +240,7 @@ struct CreateVirtualDisplayForm: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .controlSize(.mini)
-                Text("启动时自动创建")
+                Text("Auto Create at Launch")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -253,7 +253,7 @@ struct CreateVirtualDisplayForm: View {
                             .scaleEffect(0.7)
                             .frame(width: 14, height: 14)
                     }
-                    Text(isCreating ? "创建中..." : "创建")
+                    Text(isCreating ? "Creating..." : "Create")
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -268,7 +268,7 @@ struct CreateVirtualDisplayForm: View {
         guard !isCreating else { return }
         let preset = presets[selectedPreset]
         let config = VirtualDisplayService.VirtualDisplayConfig(
-            name: name.isEmpty ? "虚拟显示器" : name,
+            name: name.isEmpty ? "Virtual Display" : name,
             width: preset.width,
             height: preset.height,
             refreshRate: 60,

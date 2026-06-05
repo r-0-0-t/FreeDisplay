@@ -51,9 +51,9 @@ final class SettingsService: ObservableObject, @unchecked Sendable {
         /// Human-readable name shown in the picker, in its own language.
         var displayName: String {
             switch self {
-            case .system:  return NSLocalizedString("跟随系统", comment: "")
+            case .system:  return NSLocalizedString("Follow System", comment: "")
             case .english: return "English"
-            case .chinese: return "简体中文"
+            case .chinese: return "Chinese (Simplified)"
             }
         }
 
