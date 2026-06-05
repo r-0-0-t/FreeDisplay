@@ -47,13 +47,12 @@ final class HiDPIService: @unchecked Sendable {
     // MARK: - Public API
 
     /// Whether the experimental CoreDisplay-based HiDPI method is available on this system.
-    /// Always returns true — the runtime method gracefully falls back to plist if symbols aren't found.
-    var isCoreDisplayApiAvailable: Bool { true }
+    /// Returns true only when all required CoreDisplay symbols were loaded via dlsym.
+    var isCoreDisplayApiAvailable: Bool { isExperimentalHiDPIAvailable }
 
-    /// Whether the experimental method is opted-in via settings.
-    /// The runtime method will try dlsym symbols and fall back to plist if unavailable.
+    /// Whether the experimental method is opted-in AND the API is actually available.
     var shouldUseRuntimeMethod: Bool {
-        SettingsService.shared.useExperimentalHiDPI
+        SettingsService.shared.useExperimentalHiDPI && isExperimentalHiDPIAvailable
     }
 
     /// Checks whether HiDPI modes are currently registered for this display.
@@ -74,8 +73,9 @@ final class HiDPIService: @unchecked Sendable {
     }
 
     /// Enables HiDPI for an external display.
-    /// Uses the experimental CoreDisplay runtime API when opted-in and available,
-    /// otherwise falls back to the plist override approach (requires admin password).
+    /// Uses the experimental CoreDisplay runtime API when opted-in and available.
+    /// Falls back to the plist override approach (requires admin password) when
+    /// the experimental setting is off or the runtime API is unavailable.
     ///
     /// Returns nil on success, or an error string on failure.
     func enableHiDPI(for displayID: CGDirectDisplayID,
@@ -88,10 +88,10 @@ final class HiDPIService: @unchecked Sendable {
             if result == nil {
                 print("[HiDPIService] Runtime HiDPI enable succeeded for display \(displayID)")
                 return nil
-            } else {
-                print("[HiDPIService] Runtime HiDPI enable failed: \(result!), falling back to plist")
-                // Fall through to plist override
             }
+            // Runtime failed — return the error instead of silently falling through to plist.
+            // The user can turn off experimental mode in Settings to use the plist method.
+            return result
         }
         return enableHiDPIPlist(vendor: vendor, product: product,
                                 nativeWidth: nativeWidth, nativeHeight: nativeHeight)
